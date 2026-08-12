@@ -1,0 +1,22 @@
+{
+  "demo-plant-1": {
+    "temperatureF": 78.2,
+    "humidityPct": 52,
+    "vpdKpa": 1.46,
+    "soilMoisturePct": 43,
+    "ec": 1.8,
+    "ph": 6.3,
+    "ppfd": 760,
+    "updatedAt": "2026-08-11T22:50:00-04:00"
+  },
+  "demo-plant-2": {
+    "temperatureF": 77.6,
+    "humidityPct": 55,
+    "vpdKpa": 1.32,
+    "soilMoisturePct": 48,
+    "ec": 1.6,
+    "ph": 6.4,
+    "ppfd": 700,
+    "updatedAt": "2026-08-11T22:50:00-04:00"
+  }
+}
