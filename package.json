@@ -1,0 +1,21 @@
+{
+  "name": "cannaai-chatgpt-plant-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ChatGPT MCP app for plant monitoring, camera snapshots, environment data, and optional vision analysis.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check src/store.js && node --check src/adapters/camera.js && node --check src/lib/vision.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "latest",
+    "@modelcontextprotocol/sdk": "latest",
+    "openai": "latest",
+    "zod": "latest"
+  }
+}
