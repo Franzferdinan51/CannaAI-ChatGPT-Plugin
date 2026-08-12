@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CannaAI Plant Monitor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 14px; background: transparent; }
+    .card {
+      border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+      border-radius: 18px;
+      padding: 16px;
+      background: color-mix(in srgb, Canvas 94%, transparent);
+      box-shadow: 0 12px 40px color-mix(in srgb, #000 10%, transparent);
+    }
+    .top { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; }
+    .eyebrow { font-size:12px; opacity:.62; text-transform:uppercase; letter-spacing:.08em; }
+    h1 { font-size:20px; line-height:1.2; margin:3px 0 4px; }
+    .sub { font-size:13px; opacity:.68; }
+    .badge { font-size:12px; padding:6px 9px; border-radius:999px; background: color-mix(in srgb, #35a853 15%, transparent); }
+    .photo { margin-top:14px; border-radius:14px; overflow:hidden; min-height:120px; display:grid; place-items:center; background:color-mix(in srgb, currentColor 6%, transparent); }
+    .photo img { width:100%; display:block; max-height:360px; object-fit:cover; }
+    .placeholder { padding:30px 18px; text-align:center; font-size:13px; opacity:.68; }
+    .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .metric { border-radius:12px; padding:10px; background:color-mix(in srgb, currentColor 6%, transparent); }
+    .metric .k { font-size:11px; opacity:.58; }
+    .metric .v { margin-top:3px; font-size:16px; font-weight:650; }
+    .analysis { margin-top:12px; padding:12px; border-radius:12px; background:color-mix(in srgb, currentColor 5%, transparent); white-space:pre-wrap; font-size:13px; line-height:1.45; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    button { border:0; border-radius:10px; padding:9px 12px; font:inherit; cursor:pointer; background:color-mix(in srgb, currentColor 10%, transparent); color:inherit; }
+    button.primary { background:#2f7d44; color:white; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    @media(max-width:520px){ .metrics{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="top">
+      <div>
+        <div class="eyebrow">CannaAI plant monitor</div>
+        <h1 id="name">Plant</h1>
+        <div class="sub" id="sub">Waiting for data…</div>
+      </div>
+      <div class="badge" id="stage">—</div>
+    </div>
+
+    <div class="photo" id="photo"><div class="placeholder">No snapshot loaded.</div></div>
+    <div class="metrics" id="metrics"></div>
+    <div class="analysis" id="analysis" hidden></div>
+
+    <div class="actions">
+      <button id="snapshot">Refresh snapshot</button>
+      <button id="analyze" class="primary">Analyze latest image</button>
+      <button id="ask">Ask ChatGPT about this plant</button>
+    </div>
+  </main>
+
+  <script type="module">
+    let rpcId = 0;
+    const pending = new Map();
+    let state = { plant: null, environment: null, snapshot: null, analysis: null };
+
+    const $ = (id) => document.getElementById(id);
+
+    function rpcRequest(method, params) {
+      return new Promise((resolve, reject) => {
+        const id = ++rpcId;
+        pending.set(id, { resolve, reject });
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+      });
+    }
+    function rpcNotify(method, params) {
+      window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+    }
+
+    async function initialize() {
+      await rpcRequest("ui/initialize", {
+        appInfo: { name: "cannaai-plant-widget", version: "0.1.0" },
+        appCapabilities: {},
+        protocolVersion: "2026-01-26"
+      });
+      rpcNotify("ui/notifications/initialized", {});
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent) return;
+      const msg = event.data;
+      if (!msg || msg.jsonrpc !== "2.0") return;
+
+      if (msg.id !== undefined && pending.has(msg.id)) {
+        const job = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.error) job.reject(msg.error); else job.resolve(msg.result);
+        return;
+      }
+
+      if (msg.method === "ui/notifications/tool-result") {
+        absorb(msg.params?.structuredContent ?? msg.params);
+      }
+    }, { passive: true });
+
+    function absorb(data) {
+      if (!data || typeof data !== "object") return;
+      state = {
+        ...state,
+        plant: data.plant ?? state.plant,
+        environment: data.environment ?? state.environment,
+        snapshot: data.snapshot ?? state.snapshot,
+        analysis: data.analysis ?? state.analysis,
+      };
+      render();
+    }
+
+    function value(v, suffix="") { return v === null || v === undefined ? "—" : `${v}${suffix}`; }
+
+    function render() {
+      const p = state.plant;
+      const e = state.environment;
+      if (p) {
+        $("name").textContent = p.name;
+        $("sub").textContent = `${p.strain} • ${p.location} • Day ${p.day ?? "—"}`;
+        $("stage").textContent = p.stage ?? "unknown";
+      }
+
+      const metrics = [
+        ["Temp", value(e?.temperatureF, "°F")],
+        ["RH", value(e?.humidityPct, "%")],
+        ["VPD", value(e?.vpdKpa, " kPa")],
+        ["Soil", value(e?.soilMoisturePct, "%")],
+        ["EC", value(e?.ec)],
+        ["pH", value(e?.ph)],
+      ];
+      const metricNodes = metrics.map(([k, v]) => {
+        const metric = document.createElement("div");
+        metric.className = "metric";
+        const key = document.createElement("div");
+        key.className = "k";
+        key.textContent = k;
+        const val = document.createElement("div");
+        val.className = "v";
+        val.textContent = v;
+        metric.append(key, val);
+        return metric;
+      });
+      $("metrics").replaceChildren(...metricNodes);
+
+      if (state.snapshot?.url) {
+        const img = document.createElement("img");
+        img.alt = "Latest plant snapshot";
+        img.src = state.snapshot.url;
+        $("photo").replaceChildren(img);
+      } else if (state.snapshot?.message) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "placeholder";
+        placeholder.textContent = state.snapshot.message;
+        $("photo").replaceChildren(placeholder);
+      }
+
+      if (state.analysis?.text) {
+        $("analysis").hidden = false;
+        $("analysis").textContent = state.analysis.text;
+      }
+    }
+
+    async function callTool(name, args) {
+      const result = await rpcRequest("tools/call", { name, arguments: args });
+      absorb(result?.structuredContent);
+      return result;
+    }
+
+    $("snapshot").onclick = async () => {
+      if (!state.plant?.id) return;
+      $("snapshot").disabled = true;
+      try { await callTool("get_latest_snapshot", { plantId: state.plant.id }); }
+      finally { $("snapshot").disabled = false; }
+    };
+
+    $("analyze").onclick = async () => {
+      if (!state.plant?.id) return;
+      $("analyze").disabled = true;
+      try {
+        await callTool("analyze_plant_snapshot", {
+          plantId: state.plant.id,
+          question: "Assess the latest image for visible plant health, stress, pests, nutrient symptoms, and changes worth watching."
+        });
+      } finally { $("analyze").disabled = false; }
+    };
+
+    $("ask").onclick = async () => {
+      if (!state.plant) return;
+      const prompt = `Look at the CannaAI data for ${state.plant.name} and tell me what stands out right now.`;
+      if (window.openai?.sendFollowUpMessage) {
+        await window.openai.sendFollowUpMessage({ prompt });
+      } else {
+        await rpcRequest("ui/message", { role: "user", content: [{ type: "text", text: prompt }] });
+      }
+    };
+
+    const ready = initialize();
+    ready.catch(console.error);
+    render();
+  </script>
+</body>
+</html>
