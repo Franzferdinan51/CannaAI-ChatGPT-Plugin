@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo-plant-1",
+    "name": "Demo Plant #1",
+    "strain": "Demo Cultivar A",
+    "stage": "flower",
+    "day": 31,
+    "location": "Demo Zone A",
+    "cameraId": "demo-cam-1",
+    "notes": "Synthetic example record. Replace this with your real plant data source."
+  },
+  {
+    "id": "demo-plant-2",
+    "name": "Demo Plant #2",
+    "strain": "Demo Cultivar B",
+    "stage": "vegetative",
+    "day": 18,
+    "location": "Demo Zone B",
+    "cameraId": "demo-cam-2",
+    "notes": "Synthetic example record."
+  }
+]
