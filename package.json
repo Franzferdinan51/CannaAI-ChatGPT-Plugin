@@ -1,13 +1,13 @@
 {
   "name": "cannaai-chatgpt-plant-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "ChatGPT MCP app for real or mock CannaAI plant data, environment monitoring, camera snapshots, and vision analysis.",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check src/config.js && node --check src/client/errors.js && node --check src/client/cannaai-client.js && node --check src/client/normalize.js && node --check src/client/capabilities.js && node --check src/store.js && node --check src/adapters/camera.js && node --check src/lib/vision.js && node --test"
+    "check": "node --check server.js && node --check src/config.js && node --check src/client/errors.js && node --check src/client/cannaai-client.js && node --check src/client/normalize.js && node --check src/client/normalize-stage2.js && node --check src/client/capabilities.js && node --check src/store.js && node --check src/tools/stage2.js && node --check src/adapters/camera.js && node --check src/lib/vision.js && node --test"
   },
   "engines": {
     "node": ">=20"
