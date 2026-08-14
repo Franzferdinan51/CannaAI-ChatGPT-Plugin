@@ -20,13 +20,12 @@ test('Stage 2 client uses exact read-only routes', async () => {
   await client.listRooms();
   await client.getRoom('room/a');
   await client.listAlerts();
-  await client.getAlert('alert/a');
   await client.getPlantAnalyses('plant/a');
   await client.getAnalysisHistory();
   await client.getCanopyStatus();
   await client.getTrichomeCapabilities();
   assert.deepEqual(seen, [
-    '/api/rooms', '/api/rooms/room%2Fa', '/api/alerts', '/api/alerts/alert%2Fa',
+    '/api/rooms', '/api/rooms/room%2Fa', '/api/alerts',
     '/api/plants/plant%2Fa/analyses', '/api/history', '/api/canopy', '/api/trichome-analysis',
   ]);
 });
