@@ -18,6 +18,12 @@ import {
   compareEnvironmentSeries,
   summarizeAlerts,
 } from './client/normalize-stage2.js';
+import {
+  normalizeAdvisorStatus,
+  normalizeAdvisorResult,
+  normalizeAiInsights,
+  normalizeInventory,
+} from './client/normalize-stage3.js';
 
 const plantsPath = new URL('../data/plants.json', import.meta.url);
 const envPath = new URL('../data/environment.json', import.meta.url);
@@ -229,6 +235,60 @@ export function createStore({ config = getConfig(), client = null, env = process
     return normalizeTrichomeCapabilities(await apiClient.getTrichomeCapabilities());
   }
 
+  async function getAdvisorStatus() {
+    if (config.mode === 'mock') return { workflow: 'planner → skeptic → synthesizer', providers: [] };
+    return normalizeAdvisorStatus(await apiClient.getAdvisorStatus());
+  }
+
+  async function askCannaAiAdvisor(options = {}) {
+    if (config.mode === 'mock') {
+      throw new CannaAIError('CANNAAI_UNSUPPORTED', 'CannaAI advisor execution requires api mode.');
+    }
+    return normalizeAdvisorResult(await apiClient.runAdvisor(options));
+  }
+
+  async function getAiInsights({ hours = 24 } = {}) {
+    const parsedHours = Number.parseInt(String(hours), 10);
+    const safeHours = Math.min(168, Math.max(1, Number.isFinite(parsedHours) ? parsedHours : 24));
+    if (config.mode === 'mock') {
+      return {
+        insights: [],
+        summary: 'CannaAI AI insights are unavailable in mock mode.',
+        coPilotResponse: '',
+        latestReadings: { vpdKpa: null, temperatureF: null, humidityPct: null, co2Ppm: null },
+      };
+    }
+    return normalizeAiInsights(await apiClient.getAiInsights({ hours: safeHours }));
+  }
+
+  async function getInventorySummary() {
+    if (config.mode === 'mock') {
+      return {
+        items: [],
+        statistics: { totalValue: null, totalItems: 0, lowStockCount: 0, categoryBreakdown: {} },
+        lowStockItems: [],
+        source: 'mock',
+      };
+    }
+    return normalizeInventory(await apiClient.getInventory());
+  }
+
+  async function listInventoryItems({ category = null, lowStockOnly = false } = {}) {
+    const inventory = await getInventorySummary();
+    let items = inventory.items;
+    if (category) {
+      const expected = String(category).trim().toLowerCase();
+      items = items.filter((item) => String(item.category ?? '').toLowerCase() === expected);
+    }
+    if (lowStockOnly) {
+      const lowIds = new Set(inventory.lowStockItems.map((item) => item.id));
+      items = items.filter((item) => lowIds.has(item.id) || (
+        item.quantity !== null && item.lowStockThreshold !== null && item.quantity <= item.lowStockThreshold
+      ));
+    }
+    return items;
+  }
+
   async function getBackendStatus() {
     if (config.mode === 'mock') {
       return {
@@ -270,7 +330,7 @@ export function createStore({ config = getConfig(), client = null, env = process
       return apiClient[method](...args);
     };
 
-    const [statusResult, plantsResult, environmentResult, roomsResult, sensorsResult, alertsResult, historyResult, analyticsResult, canopyResult, trichomeResult] = await Promise.allSettled([
+    const [statusResult, plantsResult, environmentResult, roomsResult, sensorsResult, alertsResult, historyResult, analyticsResult, canopyResult, trichomeResult, advisorsResult, aiInsightsResult, inventoryResult] = await Promise.allSettled([
       probe('getStatus'),
       probe('listPlants', [{ page: 1, limit: 1 }]),
       probe('getEnvironment'),
@@ -281,6 +341,9 @@ export function createStore({ config = getConfig(), client = null, env = process
       probe('getPlantHealthAnalytics', [{ timeframe: '7d' }]),
       probe('getCanopyStatus'),
       probe('getTrichomeCapabilities'),
+      probe('getAdvisorStatus'),
+      probe('getAiInsights', [{ hours: 1 }]),
+      probe('getInventory'),
     ]);
 
     let plantAnalysesAvailable = false;
@@ -308,6 +371,9 @@ export function createStore({ config = getConfig(), client = null, env = process
         analytics: analyticsResult.status === 'fulfilled',
         canopy: canopyResult.status === 'fulfilled',
         trichomeAnalysis: trichomeResult.status === 'fulfilled',
+        advisors: advisorsResult.status === 'fulfilled',
+        aiInsights: aiInsightsResult.status === 'fulfilled',
+        inventory: inventoryResult.status === 'fulfilled',
       },
       env,
     });
@@ -319,6 +385,7 @@ export function createStore({ config = getConfig(), client = null, env = process
     listAlerts, getAlert, summarizeActiveAlerts,
     getPlantAnalyses, getAnalysis, getAnalysisHistory, getPlantHealthAnalytics, comparePlants,
     getCanopyStatus, getTrichomeCapabilities,
+    getAdvisorStatus, askCannaAiAdvisor, getAiInsights, getInventorySummary, listInventoryItems,
     getBackendStatus, getCapabilities,
   };
 }
@@ -346,5 +413,10 @@ export async function getPlantHealthAnalytics(options) { return defaultStore().g
 export async function comparePlants(options) { return defaultStore().comparePlants(options); }
 export async function getCanopyStatus() { return defaultStore().getCanopyStatus(); }
 export async function getTrichomeCapabilities() { return defaultStore().getTrichomeCapabilities(); }
+export async function getAdvisorStatus() { return defaultStore().getAdvisorStatus(); }
+export async function askCannaAiAdvisor(options) { return defaultStore().askCannaAiAdvisor(options); }
+export async function getAiInsights(options) { return defaultStore().getAiInsights(options); }
+export async function getInventorySummary() { return defaultStore().getInventorySummary(); }
+export async function listInventoryItems(options) { return defaultStore().listInventoryItems(options); }
 export async function getBackendStatus() { return defaultStore().getBackendStatus(); }
 export async function getCapabilities() { return defaultStore().getCapabilities(); }
