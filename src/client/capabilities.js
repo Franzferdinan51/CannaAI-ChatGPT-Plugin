@@ -44,6 +44,9 @@ export function detectCapabilities({ status = null, probes = {}, env = process.e
   capabilities.canopy = probes.canopy === true || featureFlag(status, 'canopy');
   capabilities.analytics = probes.analytics === true || featureFlag(status, 'analytics', 'plantHealthAnalytics');
   capabilities.trichomeAnalysis = probes.trichomeAnalysis === true || featureFlag(status, 'trichomeAnalysis', 'trichomes');
+  capabilities.advisors = probes.advisors === true || featureFlag(status, 'advisors', 'advisorWorkflow');
+  capabilities.aiInsights = probes.aiInsights === true || featureFlag(status, 'aiInsights', 'predictiveInsights');
+  capabilities.inventory = probes.inventory === true || featureFlag(status, 'inventory');
   capabilities.cameras = probes.cameras === true || featureFlag(status, 'cameras', 'camera', 'snapshots') || (
     String(env.CAMERA_MODE ?? '').toLowerCase() === 'http' && Boolean(String(env.CAMERA_SNAPSHOT_URL_TEMPLATE ?? '').trim())
   );
