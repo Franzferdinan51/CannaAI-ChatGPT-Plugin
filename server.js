@@ -272,7 +272,7 @@ export function createCannaAiServer() {
         "Use this when the user wants to see the latest camera image for a specific plant. This reads the plant's configured camera and returns the newest snapshot reference.",
       inputSchema: { plantId: z.string().min(1) },
       outputSchema: { plant: plantSchema, snapshot: snapshotSchema },
-      annotations: backendReadAnnotations,
+      annotations: { ...backendReadAnnotations, openWorldHint: true },
     },
     async ({ plantId }) => {
       const plant = await getPlant(plantId);
@@ -301,7 +301,7 @@ export function createCannaAiServer() {
         snapshot: snapshotSchema,
         analysis: z.object({ model: z.string(), text: z.string() }),
       },
-      annotations: backendReadAnnotations,
+      annotations: { ...backendReadAnnotations, openWorldHint: true },
       _meta: {
         "openai/toolInvocation/invoking": "Checking the plant image…",
         "openai/toolInvocation/invoked": "Plant image checked.",
@@ -397,7 +397,7 @@ const httpServer = createServer(async (req, res) => {
   const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
   if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Expose-Headers", "Mcp-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
     const server = createCannaAiServer();
     const transport = new StreamableHTTPServerTransport({
