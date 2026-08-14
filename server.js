@@ -21,8 +21,9 @@ import { getSnapshot } from "./src/adapters/camera.js";
 import { analyzePlantImage } from "./src/lib/vision.js";
 import { registerStage2Tools } from "./src/tools/stage2.js";
 import { registerStage3Tools } from "./src/tools/stage3.js";
+import { registerStage4Views } from "./src/tools/stage4-views.js";
 
-const PLUGIN_VERSION = "0.4.0";
+const PLUGIN_VERSION = "0.5.0";
 const WIDGET_URI = "ui://cannaai/plant-dashboard-v1.html";
 const widgetHtml = readFileSync(new URL("./public/plant-widget.html", import.meta.url), "utf8");
 
@@ -356,6 +357,7 @@ export function createCannaAiServer() {
 
   registerStage2Tools(server);
   registerStage3Tools(server);
+  registerStage4Views(server);
 
   return server;
 }
