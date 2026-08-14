@@ -156,4 +156,35 @@ export class CannaAIClient {
   getTrichomeCapabilities() {
     return this.request('/api/trichome-analysis');
   }
+
+  getAdvisorStatus() {
+    return this.request('/api/advisors');
+  }
+
+  runAdvisor({ task, context = null, provider = null, model = null } = {}) {
+    const cleanTask = String(task ?? '').trim();
+    const cleanContext = context == null ? null : String(context).trim();
+    if (!cleanTask) throw new Error('Advisor task is required.');
+    if (cleanTask.length > 12000) throw new Error('Advisor task must be 12000 characters or fewer.');
+    if (cleanContext && cleanContext.length > 20000) throw new Error('Advisor context must be 20000 characters or fewer.');
+    const payload = { task: cleanTask };
+    if (cleanContext) payload.context = cleanContext;
+    if (provider) payload.provider = String(provider);
+    if (model) payload.model = String(model);
+    return this.request('/api/advisors', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  getAiInsights({ hours = 24 } = {}) {
+    const parsedHours = Number.parseInt(String(hours), 10);
+    const safeHours = Math.min(168, Math.max(1, Number.isFinite(parsedHours) ? parsedHours : 24));
+    return this.request(`/api/ai-insights?hours=${safeHours}`);
+  }
+
+  getInventory() {
+    return this.request('/api/inventory');
+  }
 }
