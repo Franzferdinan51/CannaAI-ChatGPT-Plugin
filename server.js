@@ -19,8 +19,9 @@ import {
 import { emptyCapabilities } from "./src/client/capabilities.js";
 import { getSnapshot } from "./src/adapters/camera.js";
 import { analyzePlantImage } from "./src/lib/vision.js";
+import { registerStage2Tools } from "./src/tools/stage2.js";
 
-const PLUGIN_VERSION = "0.2.0";
+const PLUGIN_VERSION = "0.3.0";
 const WIDGET_URI = "ui://cannaai/plant-dashboard-v1.html";
 const widgetHtml = readFileSync(new URL("./public/plant-widget.html", import.meta.url), "utf8");
 
@@ -352,6 +353,8 @@ export function createCannaAiServer() {
     }
   );
 
+  registerStage2Tools(server);
+
   return server;
 }
 
@@ -394,7 +397,7 @@ const httpServer = createServer(async (req, res) => {
   const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
   if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+    res.setHeader("Access-Control-Allow-Expose-Headers", "Mcp-Session-Id");
 
     const server = createCannaAiServer();
     const transport = new StreamableHTTPServerTransport({
