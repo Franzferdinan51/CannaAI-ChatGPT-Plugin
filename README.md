@@ -2,7 +2,7 @@
 
 A ChatGPT/MCP app that exposes a real [CannaAI](https://github.com/Franzferdinan51/CannaAI) grow backend as safe, typed ChatGPT tools and lightweight in-chat views.
 
-**Current plugin version: `0.3.0`**
+**Current plugin version: `0.4.0`**
 
 The project supports two data modes:
 
@@ -41,6 +41,17 @@ The plugin is intentionally an MCP facade, not a second copy of CannaAI. Persist
 
 Stage 2 is deliberately read-only. It does **not** expose alert mutation, room mutation, shell access, arbitrary HTTP, or physical grow controls.
 
+### Stage 3 — Advisor, predictive insights, and inventory parity
+
+- CannaAI advisor provider/workflow status
+- CannaAI planner → skeptic → synthesizer advisor execution
+- predictive AI sensor insights with a bounded 1–168 hour lookback
+- backend-reported inventory totals and low-stock summaries
+- inventory item filtering by category and low-stock state
+- capability probing for advisors, AI insights, and inventory
+
+Stage 3 deliberately leaves `harvests=false` because the current CannaAI main repo does not expose a verified harvest read API. Advisor execution is a non-destructive AI compute operation; it may consume inference from the providers configured in CannaAI.
+
 ## Architecture
 
 ```text
@@ -64,7 +75,9 @@ CannaAI ChatGPT Plant App
           |-- alerts
           |-- analyses / history
           |-- analytics / canopy
-          `-- trichome capabilities
+          |-- trichome capabilities
+          |-- advisors / AI insights
+          `-- inventory
 ```
 
 ## Requirements
@@ -122,7 +135,7 @@ CANNAAI_ENABLE_WRITE_TOOLS=false
 CANNAAI_ENABLE_AUTOMATION=false
 ```
 
-## CannaAI routes used by `0.3.0`
+## CannaAI routes used by `0.4.0`
 
 The plugin currently integrates with these real read routes when available:
 
@@ -139,6 +152,10 @@ GET /api/history
 GET /api/analytics/plant-health
 GET /api/canopy
 GET /api/trichome-analysis
+GET /api/advisors
+POST /api/advisors
+GET /api/ai-insights
+GET /api/inventory
 ```
 
 The client also probes `GET /api/health`. Current CannaAI builds may not expose it; a 404 falls back to a lightweight plant-list reachability probe.
@@ -152,6 +169,12 @@ The client also probes `GET /api/health`. Current CannaAI builds may not expose 
 **Canopy:** the current CannaAI `/api/canopy` route returns a simple backend payload. The plugin labels it as CannaAI-reported data and does not imply that it came from a live vision measurement unless the backend actually provides one.
 
 **Plant environment:** the generic `/api/environment` route can be grow-wide. `get_environment` will not assign those readings to a specific plant unless the backend explicitly provides the association. Use Stage 2 sensor-history tools for room/grow-wide data.
+
+**AI insights room parameter:** the current CannaAI `/api/ai-insights` implementation parses a `room` query parameter but does not apply it to the database query. The ChatGPT app therefore exposes lookback hours only and does not claim room-scoped predictive insights.
+
+**Inventory:** the current CannaAI `/api/inventory` implementation is backed by an in-memory/mock dataset. The plugin labels inventory as backend-reported and potentially demo data instead of treating it as authoritative production inventory.
+
+**Harvests:** no verified read API exists in the current main CannaAI repo, so the plugin intentionally keeps the `harvests` capability disabled rather than inventing an endpoint.
 
 ## MCP tool surface
 
@@ -204,6 +227,21 @@ Plant-health analytics supports `7d`, `30d`, and `90d` timeframes. Comparisons l
 
 `get_trichome_capabilities` is a preflight/read tool. Actual CannaAI-backed trichome image submission is a later compute-tool step because it requires image payload handling and explicit analysis semantics.
 
+### CannaAI advisor and predictive insights
+
+- `get_advisor_status`
+- `ask_cannaai_advisor`
+- `get_ai_insights`
+
+`ask_cannaai_advisor` explicitly runs CannaAI's own configured planner → skeptic → synthesizer provider workflow. It is non-destructive, but it can consume provider inference. `get_ai_insights` accepts a 1–168 hour lookback and intentionally exposes no room filter until CannaAI actually applies one.
+
+### Inventory
+
+- `get_inventory_summary`
+- `list_inventory_items`
+
+These tools are read-only. Current CannaAI main uses in-memory/mock inventory data, so responses are labeled as backend-reported and potentially demo data.
+
 ## Camera integration
 
 Default:
@@ -252,6 +290,18 @@ Compare plants <id-1> and <id-2> using their available health analytics.
 What trichome-analysis devices and magnification does my CannaAI backend support?
 ```
 
+```text
+Which CannaAI advisor providers are healthy, then ask the CannaAI advisor to review my flowering conditions.
+```
+
+```text
+Show me CannaAI's predictive insights from the last 48 hours.
+```
+
+```text
+Summarize CannaAI inventory and show only low-stock nutrient items.
+```
+
 ## Validation
 
 Run:
@@ -260,7 +310,7 @@ Run:
 npm run check
 ```
 
-The `0.3.0` suite covers configuration, secret-safe auth behavior, normalized HTTP errors, GET retries, arbitrary-URL rejection, health fallback, plant normalization, environment scoping, room and alert normalization, bounded sensor history, environmental comparisons, analyses/history, health analytics, canopy, trichome capabilities, capability fail-closed behavior, MCP tool registration, and real local HTTP integration shaped like current CannaAI routes.
+The `0.4.0` suite covers configuration, secret-safe auth behavior, normalized HTTP errors, GET retries, arbitrary-URL rejection, health fallback, plant normalization, environment scoping, room and alert normalization, bounded sensor history, environmental comparisons, analyses/history, health analytics, canopy, trichome capabilities, capability fail-closed behavior, MCP tool registration, and real local HTTP integration shaped like current CannaAI routes, advisor POST payloads, predictive insights, inventory normalization/filtering, and Stage 3 capability fail-closed behavior.
 
 ## Public repository safety
 
@@ -290,13 +340,14 @@ Implementation plans:
 ```text
 docs/superpowers/plans/2026-08-13-stage1-real-backend-foundation.md
 docs/superpowers/plans/2026-08-13-stage2-read-only-cultivation-parity.md
+docs/superpowers/plans/2026-08-13-stage3-advisor-insights-inventory-parity.md
 ```
 
 Next stages:
 
-1. **Business/advisor parity** — advisors, AI insights, inventory, harvest/yield/business metrics where real backend endpoints exist.
-2. **Richer ChatGPT views** — grow overview, environment trends, alerts, analysis/trichome results.
-3. **Guarded automation parity** — status reads plus explicit preview/confirm action tickets for supported CannaAI mutations.
+1. **Richer ChatGPT views** — grow overview, environment trends, alerts, analysis/trichome results.
+2. **Guarded automation parity** — status reads plus explicit preview/confirm action tickets for supported CannaAI mutations.
+3. **Backend-gap follow-up** — harvest/yield/business tools only after CannaAI exposes narrow real read endpoints.
 
 When a useful CannaAI feature has no callable read API, the preferred fix is to add a narrow endpoint to CannaAI rather than duplicate its logic inside the ChatGPT app.
 
