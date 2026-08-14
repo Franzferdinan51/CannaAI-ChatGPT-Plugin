@@ -134,10 +134,6 @@ export class CannaAIClient {
     return this.request('/api/alerts');
   }
 
-  getAlert(alertId) {
-    return this.request(`/api/alerts/${encodeURIComponent(alertId)}`);
-  }
-
   getPlantAnalyses(plantId) {
     return this.request(`/api/plants/${encodeURIComponent(plantId)}/analyses`);
   }
