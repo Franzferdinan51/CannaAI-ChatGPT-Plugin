@@ -170,12 +170,7 @@ export function createStore({ config = getConfig(), client = null, env = process
 
   async function getAlert(alertId) {
     if (config.mode === 'mock') return null;
-    try {
-      return normalizeAlert(unwrapPayloadData(await apiClient.getAlert(alertId)));
-    } catch (error) {
-      if (error instanceof CannaAIError && error.code === 'CANNAAI_NOT_FOUND') return null;
-      throw error;
-    }
+    return (await listAlerts()).find((alert) => alert.id === String(alertId)) ?? null;
   }
 
   async function summarizeActiveAlerts() {
