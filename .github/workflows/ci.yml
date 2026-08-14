@@ -40,4 +40,4 @@ jobs:
             fi
             sleep 0.5
           done
-          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync("root.json","utf8")); if(x.version!=="0.3.0" || x.mcp!=="/mcp") process.exit(1)'
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync("root.json","utf8")); if(x.version!=="0.4.0" || x.mcp!=="/mcp") process.exit(1)'
