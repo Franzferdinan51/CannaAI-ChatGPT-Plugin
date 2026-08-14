@@ -8,10 +8,19 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { listPlants, getPlant, getEnvironment, getDashboardData } from "./src/store.js";
+import {
+  listPlants,
+  getPlant,
+  getEnvironment,
+  getDashboardData,
+  getBackendStatus,
+  getCapabilities,
+} from "./src/store.js";
+import { emptyCapabilities } from "./src/client/capabilities.js";
 import { getSnapshot } from "./src/adapters/camera.js";
 import { analyzePlantImage } from "./src/lib/vision.js";
 
+const PLUGIN_VERSION = "0.2.0";
 const WIDGET_URI = "ui://cannaai/plant-dashboard-v1.html";
 const widgetHtml = readFileSync(new URL("./public/plant-widget.html", import.meta.url), "utf8");
 
@@ -21,8 +30,14 @@ const plantSchema = z.object({
   strain: z.string(),
   stage: z.string(),
   day: z.number().nullable().optional(),
+  roomId: z.string().nullable().optional(),
   location: z.string(),
+  medium: z.string().nullable().optional(),
+  plantedAt: z.string().nullable().optional(),
+  expectedHarvestAt: z.string().nullable().optional(),
   cameraId: z.string().nullable().optional(),
+  healthStatus: z.string().nullable().optional(),
+  isActive: z.boolean().nullable().optional(),
   notes: z.string().optional(),
 });
 
@@ -30,10 +45,12 @@ const environmentSchema = z.object({
   temperatureF: z.number().nullable().optional(),
   humidityPct: z.number().nullable().optional(),
   vpdKpa: z.number().nullable().optional(),
+  co2Ppm: z.number().nullable().optional(),
   soilMoisturePct: z.number().nullable().optional(),
   ec: z.number().nullable().optional(),
   ph: z.number().nullable().optional(),
   ppfd: z.number().nullable().optional(),
+  dewPointF: z.number().nullable().optional(),
   updatedAt: z.string().nullable().optional(),
 }).nullable();
 
@@ -47,10 +64,30 @@ const snapshotSchema = z.object({
   message: z.string().optional(),
 });
 
-const readOnlyAnnotations = {
+const capabilitySchema = z.object({
+  plants: z.boolean(),
+  rooms: z.boolean(),
+  environment: z.boolean(),
+  environmentHistory: z.boolean(),
+  cameras: z.boolean(),
+  imageAnalysis: z.boolean(),
+  trichomeAnalysis: z.boolean(),
+  analysisHistory: z.boolean(),
+  alerts: z.boolean(),
+  canopy: z.boolean(),
+  analytics: z.boolean(),
+  advisors: z.boolean(),
+  aiInsights: z.boolean(),
+  inventory: z.boolean(),
+  harvests: z.boolean(),
+  automationRead: z.boolean(),
+  automationWrite: z.boolean(),
+});
+
+const backendReadAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
-  openWorldHint: false,
+  openWorldHint: true,
 };
 
 function textResult(text, structuredContent) {
@@ -60,12 +97,17 @@ function textResult(text, structuredContent) {
   };
 }
 
-function createCannaAiServer() {
+function safeMode() {
+  const mode = String(process.env.CANNAAI_MODE ?? "mock").trim().toLowerCase();
+  return mode === "api" ? "api" : "mock";
+}
+
+export function createCannaAiServer() {
   const server = new McpServer(
-    { name: "cannaai-plant-monitor", version: "0.1.0" },
+    { name: "cannaai-plant-monitor", version: PLUGIN_VERSION },
     {
       instructions:
-        "Use CannaAI tools for the user's own plant records, environment readings, and camera snapshots. Distinguish visible observations from diagnoses. Prefer read-only inspection tools before recommendations.",
+        "Use CannaAI tools for the user's own plant records, environment readings, and camera snapshots. Check CannaAI capabilities before assuming optional features exist. Distinguish visible observations from diagnoses. Prefer read-only inspection tools before recommendations.",
     }
   );
 
@@ -97,6 +139,77 @@ function createCannaAiServer() {
   );
 
   server.registerTool(
+    "get_cannaai_status",
+    {
+      title: "Check CannaAI status",
+      description:
+        "Use this when you need to know whether the configured CannaAI backend is reachable and whether the app is using mock or real API data.",
+      inputSchema: {},
+      outputSchema: {
+        mode: z.enum(["mock", "api"]),
+        reachable: z.boolean(),
+        backend: z.object({
+          baseUrlConfigured: z.boolean(),
+          healthRoute: z.boolean().nullable(),
+          version: z.string().nullable(),
+        }),
+        pluginVersion: z.string(),
+        errorCode: z.string().optional(),
+      },
+      annotations: backendReadAnnotations,
+    },
+    async () => {
+      try {
+        const status = await getBackendStatus();
+        return textResult(
+          status.mode === "mock"
+            ? "CannaAI is running in mock data mode."
+            : status.reachable
+              ? "The configured CannaAI backend is reachable."
+              : "The configured CannaAI backend is not reachable.",
+          { ...status, pluginVersion: PLUGIN_VERSION }
+        );
+      } catch {
+        return textResult("CannaAI backend configuration is invalid.", {
+          mode: safeMode(),
+          reachable: false,
+          backend: {
+            baseUrlConfigured: Boolean(String(process.env.CANNAAI_BASE_URL ?? "").trim()),
+            healthRoute: null,
+            version: null,
+          },
+          pluginVersion: PLUGIN_VERSION,
+          errorCode: "CANNAAI_VALIDATION_ERROR",
+        });
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_cannaai_capabilities",
+    {
+      title: "Get CannaAI capabilities",
+      description:
+        "Use this when you need to know which optional CannaAI features are actually available before choosing specialized grow, analysis, camera, history, or automation tools.",
+      inputSchema: {},
+      outputSchema: { capabilities: capabilitySchema },
+      annotations: backendReadAnnotations,
+    },
+    async () => {
+      try {
+        const capabilities = await getCapabilities();
+        const enabled = Object.entries(capabilities).filter(([, value]) => value).map(([key]) => key);
+        return textResult(
+          enabled.length ? `Available CannaAI capabilities: ${enabled.join(", ")}.` : "No CannaAI backend capabilities are currently available.",
+          { capabilities }
+        );
+      } catch {
+        return textResult("CannaAI capabilities could not be determined.", { capabilities: emptyCapabilities() });
+      }
+    }
+  );
+
+  server.registerTool(
     "list_plants",
     {
       title: "List plants",
@@ -104,7 +217,7 @@ function createCannaAiServer() {
         "Use this when the user wants to see, find, compare, or choose plants in their CannaAI grow.",
       inputSchema: {},
       outputSchema: { plants: z.array(plantSchema) },
-      annotations: readOnlyAnnotations,
+      annotations: backendReadAnnotations,
     },
     async () => {
       const plants = await listPlants();
@@ -120,7 +233,7 @@ function createCannaAiServer() {
         "Use this when the user wants details about one specific plant and you already know its stable plant ID.",
       inputSchema: { plantId: z.string().min(1) },
       outputSchema: { plant: plantSchema.nullable() },
-      annotations: readOnlyAnnotations,
+      annotations: backendReadAnnotations,
     },
     async ({ plantId }) => {
       const plant = await getPlant(plantId);
@@ -136,15 +249,15 @@ function createCannaAiServer() {
     {
       title: "Get plant environment",
       description:
-        "Use this when the user asks about current temperature, humidity, VPD, soil moisture, EC, pH, PPFD, or other environment readings for one plant.",
+        "Use this when the user asks about current temperature, humidity, VPD, CO2, soil moisture, EC, pH, PPFD, or other environment readings for one plant. If the connected backend only exposes grow-wide readings and cannot associate them with the plant, this returns no plant-specific environment rather than guessing.",
       inputSchema: { plantId: z.string().min(1) },
       outputSchema: { plantId: z.string(), environment: environmentSchema },
-      annotations: readOnlyAnnotations,
+      annotations: backendReadAnnotations,
     },
     async ({ plantId }) => {
       const environment = await getEnvironment(plantId);
       return textResult(
-        environment ? `Loaded current environment for ${plantId}.` : `No environment data found for ${plantId}.`,
+        environment ? `Loaded current environment for ${plantId}.` : `No plant-specific environment data found for ${plantId}.`,
         { plantId, environment }
       );
     }
@@ -158,7 +271,7 @@ function createCannaAiServer() {
         "Use this when the user wants to see the latest camera image for a specific plant. This reads the plant's configured camera and returns the newest snapshot reference.",
       inputSchema: { plantId: z.string().min(1) },
       outputSchema: { plant: plantSchema, snapshot: snapshotSchema },
-      annotations: { ...readOnlyAnnotations, openWorldHint: true },
+      annotations: backendReadAnnotations,
     },
     async ({ plantId }) => {
       const plant = await getPlant(plantId);
@@ -187,7 +300,7 @@ function createCannaAiServer() {
         snapshot: snapshotSchema,
         analysis: z.object({ model: z.string(), text: z.string() }),
       },
-      annotations: { ...readOnlyAnnotations, openWorldHint: true },
+      annotations: backendReadAnnotations,
       _meta: {
         "openai/toolInvocation/invoking": "Checking the plant image…",
         "openai/toolInvocation/invoked": "Plant image checked.",
@@ -224,7 +337,7 @@ function createCannaAiServer() {
         plant: plantSchema,
         environment: environmentSchema,
       },
-      annotations: readOnlyAnnotations,
+      annotations: backendReadAnnotations,
       _meta: {
         ui: { resourceUri: WIDGET_URI },
         "openai/outputTemplate": WIDGET_URI,
@@ -268,8 +381,10 @@ const httpServer = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       name: "CannaAI ChatGPT Plant App",
-      version: "0.1.0",
+      version: PLUGIN_VERSION,
       mcp: MCP_PATH,
+      cannaaiMode: safeMode(),
+      backendConfigured: Boolean(String(process.env.CANNAAI_BASE_URL ?? "").trim()),
       cameraMode: process.env.CAMERA_MODE ?? "mock",
       visionEnabled: Boolean(process.env.OPENAI_API_KEY),
     }));
