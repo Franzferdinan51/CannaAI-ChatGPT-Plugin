@@ -1,17 +1,27 @@
 # CannaAI ChatGPT Plant App
 
-A ChatGPT plugin/MCP app for inspecting plant records, environment data, and camera snapshots from normal ChatGPT conversations.
+A ChatGPT/MCP app that lets ChatGPT inspect CannaAI plant records, environmental data, camera snapshots, and plant imagery from a normal conversation.
 
-It exposes focused tools for:
+The project now supports two data modes:
 
-- listing plants
-- reading one plant record
-- reading current environment data
-- fetching a current camera snapshot
-- optional server-side vision analysis of that snapshot
-- rendering a plant dashboard inside ChatGPT
+- **`mock`** — safe public-repo development using the included synthetic JSON fixtures.
+- **`api`** — connects to a real [`CannaAI`](https://github.com/Franzferdinan51/CannaAI) backend and uses it as the source of truth.
 
-The app follows OpenAI's current Plugins / MCP Apps architecture: an MCP server exposes tools to ChatGPT and Codex, while an optional HTML UI resource renders inside ChatGPT.
+Stage 1 of the feature-parity work replaces the old fixture-only data boundary with a real CannaAI client while preserving all existing MCP tool names.
+
+## Current capabilities
+
+- CannaAI backend reachability/status checks
+- capability discovery so ChatGPT does not assume unfinished features exist
+- list real or mock plants
+- load a specific real or mock plant
+- read plant-specific environmental metrics when the backend can actually associate readings with the plant
+- fetch camera snapshots through the existing camera adapter
+- optional server-side image analysis
+- render the existing plant dashboard inside ChatGPT
+- normalized errors, timeouts, one safe GET retry, and secret-safe status output
+
+The larger parity design also covers rooms, environment history, alerts, trichomes, canopy, analytics, advisors, inventory, harvests, richer widgets, and guarded automation. Those later capability groups are intentionally reported as unavailable until implemented instead of being advertised prematurely.
 
 ## Architecture
 
@@ -20,19 +30,30 @@ ChatGPT
   |
   | MCP /mcp
   v
-CannaAI Plant App
-  |-- plant data adapter (JSON fixtures now; replace with CannaAI DB/API)
-  |-- environment adapter
-  |-- camera snapshot adapter
-  |-- optional OpenAI vision analysis
-  `-- ChatGPT plant dashboard widget
+CannaAI ChatGPT Plant App
+  |-- MCP tools + ChatGPT widget
+  |-- capability discovery
+  |-- normalized schemas/errors
+  |-- mock store (synthetic fixtures)
+  `-- CannaAIClient (api mode)
+          |
+          | HTTP/HTTPS
+          v
+        CannaAI
+          |-- /api/plants
+          |-- /api/plants/{id}
+          `-- /api/environment
 ```
+
+The MCP layer does **not** copy CannaAI persistence or business logic. CannaAI remains authoritative in `api` mode.
 
 ## Requirements
 
 - Node.js 20+
-- A public HTTPS URL for ChatGPT to reach `/mcp` (ngrok is fine for development)
-- Optional: `OPENAI_API_KEY` if you want `analyze_plant_snapshot`
+- npm
+- A public HTTPS URL for ChatGPT to reach `/mcp` when testing from ChatGPT
+- A running CannaAI instance for `CANNAAI_MODE=api`
+- Optional: `OPENAI_API_KEY` for the local `analyze_plant_snapshot` fallback
 
 ## Install
 
@@ -41,152 +62,237 @@ npm install
 cp .env.example .env
 ```
 
-Node does not automatically load `.env` in this starter. Either export the variables in your shell or run Node with its env-file flag:
+Node does not automatically load `.env` in this starter. Start with:
 
 ```bash
 node --env-file=.env server.js
 ```
 
-For development:
+Development:
 
 ```bash
 node --watch --env-file=.env server.js
 ```
 
-The MCP endpoint is:
+The local MCP endpoint is:
 
 ```text
 http://localhost:8787/mcp
 ```
 
-## Test locally
+## Mock mode
 
-```bash
-npm run check
-curl http://localhost:8787/
+Mock mode is the default and requires no CannaAI server:
+
+```env
+CANNAAI_MODE=mock
+CAMERA_MODE=mock
 ```
 
-Then expose it over HTTPS, for example:
+It reads only the synthetic files under `data/`.
 
-```bash
-ngrok http 8787
+## Connect to a real CannaAI instance
+
+Set:
+
+```env
+CANNAAI_MODE=api
+CANNAAI_BASE_URL=http://localhost:3000
+CANNAAI_API_TOKEN=
+CANNAAI_REQUEST_TIMEOUT_MS=15000
 ```
 
-If ngrok gives you:
+`CANNAAI_API_TOKEN` is optional because local CannaAI deployments may not require a bearer token. If your deployment does require one, keep it only in the environment; never commit it.
+
+Stage 1 currently integrates with these real CannaAI endpoints:
 
 ```text
-https://example.ngrok-free.app
+GET /api/plants
+GET /api/plants/{id}
+GET /api/environment
 ```
 
-use this MCP URL in ChatGPT:
+The client first probes `GET /api/health`. Current CannaAI versions may not expose that route, so a `404` is treated as a compatibility case and the plugin falls back to a lightweight plant-list probe rather than declaring the backend dead.
 
-```text
-https://example.ngrok-free.app/mcp
-```
+### Environment scope is intentionally conservative
 
-In ChatGPT, enable Developer Mode and add the MCP app/plugin from Settings, then refresh it whenever you change tool metadata.
+The current CannaAI `/api/environment` route can return grow-wide sensor readings. The ChatGPT tool `get_environment` is plant-specific, so the plugin will **not** pretend a grow-wide reading belongs to a particular plant.
 
-## Public repository safety
+If the backend explicitly associates readings with the requested plant, they are returned. Otherwise `get_environment` returns no plant-specific environment data. Later parity stages add room/history-aware tools for grow-wide readings.
 
-This repository is designed to be safe to publish as source code. The committed files contain only synthetic fixture data and placeholder endpoint examples. Keep `.env` untracked and never commit API keys, camera bearer tokens, private camera URLs, signed snapshot URLs, or real grow/sensor exports.
+## New system tools
 
-`package.json` intentionally keeps `"private": true`; that prevents accidental publication to the npm registry and does **not** make the GitHub repository private.
+### `get_cannaai_status`
+
+Use this to check whether the app is in mock or API mode and whether the configured CannaAI backend is reachable.
+
+It intentionally reports only whether a base URL is configured. It does **not** return the configured private URL or API token.
+
+### `get_cannaai_capabilities`
+
+Use this before assuming optional CannaAI features exist. It returns a complete boolean capability map including:
+
+- plants
+- rooms
+- environment
+- environment history
+- cameras
+- image analysis
+- trichome analysis
+- analysis history
+- alerts
+- canopy
+- analytics
+- advisors / AI insights
+- inventory / harvests
+- automation read/write
+
+Unimplemented or unreachable capabilities fail closed to `false`.
+
+## Existing tool surface
+
+### `list_plants`
+Read-only. Lists normalized plant records from the selected data mode.
+
+### `get_plant`
+Read-only. Returns one plant by stable ID. In API mode it uses the detail route and enriches missing strain/location metadata from the list route when needed.
+
+### `get_environment`
+Read-only. Returns current **plant-associated** metrics. Temperature is normalized to Fahrenheit when the backend explicitly identifies Celsius input.
+
+### `get_latest_snapshot`
+Read-only/open-world. Calls the configured camera/CannaAI snapshot endpoint.
+
+### `analyze_plant_snapshot`
+Read-only/open-world. Retrieves a snapshot and uses the configured OpenAI vision model as the current fallback analyzer.
+
+### `render_plant_dashboard`
+Read-only render tool. Opens the inline ChatGPT dashboard for a selected plant.
 
 ## Camera integration
 
-The starter defaults to:
+The default is:
 
 ```env
 CAMERA_MODE=mock
 ```
 
-To connect a CannaAI/IP-camera snapshot endpoint:
+For an HTTP snapshot endpoint:
 
 ```env
 CAMERA_MODE=http
 CAMERA_SNAPSHOT_URL_TEMPLATE=https://your-cannaai-host/api/cameras/{cameraId}/snapshot.jpg
-CAMERA_BEARER_TOKEN=optional-secret
+CAMERA_BEARER_TOKEN=
 ```
 
-The endpoint must return an image. For the cleanest ChatGPT/widget behavior, make the returned image URL short-lived/signed if the camera itself is private.
+For production, prefer short-lived signed image URLs. Do not expose permanent camera credentials in MCP output or widget HTML.
 
-### Important production note
+## Validate
 
-The current HTTP adapter validates a protected endpoint with `CAMERA_BEARER_TOKEN`, but the widget and server-side vision model subsequently need a usable image URL. A production CannaAI backend should therefore return a short-lived signed snapshot URL rather than exposing a permanent camera URL or credential.
+```bash
+npm run check
+```
 
-## Replace fixture data with real CannaAI data
+The check command syntax-checks the server and Stage 1 modules, then runs the Node test suite.
 
-The only fixture-specific module is:
+Stage 1 tests cover:
+
+- config defaults/validation
+- bearer auth behavior
+- timeout/network/status normalization
+- one retry for safe transient GET failures
+- rejection of arbitrary external URLs
+- health-route fallback behavior
+- plant normalization and detail enrichment
+- explicit Celsius-to-Fahrenheit conversion
+- conservative environment scoping
+- deterministic capability detection
+- mock/API store behavior
+- MCP system-tool contract checks
+- an actual local HTTP integration flow shaped like the current CannaAI routes
+
+## Connect to ChatGPT
+
+Run the server and expose port `8787` through a public HTTPS tunnel, then connect the resulting HTTPS `/mcp` URL from ChatGPT Developer Mode. Refresh the app after tool metadata changes so ChatGPT reloads the descriptors.
+
+Useful prompts:
 
 ```text
-src/store.js
-```
-
-Replace its functions while preserving the return shapes:
-
-```js
-listPlants()
-getPlant(plantId)
-getEnvironment(plantId)
-getDashboardData(plantId)
-```
-
-That means the MCP tool layer does not need to change when you move from JSON to SQLite, Postgres, Home Assistant, MQTT, an Android node, or your existing CannaAI API.
-
-## Useful prompts once connected
-
-```text
-Show me my plants.
-```
-
-```text
-Open the dashboard for Demo Plant #1.
-```
-
-```text
-What is the VPD and soil moisture on Demo Plant #1?
+Check whether my CannaAI backend is reachable.
 ```
 
 ```text
-Get the newest image from Demo Plant #1 and assess what looks different or stressed.
+What CannaAI capabilities are available right now?
 ```
 
-## Tool surface
+```text
+Show me my CannaAI plants.
+```
 
-### `list_plants`
-Read-only. Returns stable IDs and plant metadata.
+```text
+Open the dashboard for plant <id>.
+```
 
-### `get_plant`
-Read-only. Returns one plant by ID.
+## Public repository safety
 
-### `get_environment`
-Read-only. Returns current environmental metrics.
+This repository is designed to remain safe to publish. Committed fixture data is synthetic.
 
-### `get_latest_snapshot`
-Read-only, open-world. Calls your camera/CannaAI snapshot endpoint.
+Never commit:
 
-### `analyze_plant_snapshot`
-Read-only, open-world. Fetches the latest snapshot and, when an API key is configured, uses an OpenAI vision-capable model to inspect it together with plant/environment context.
+- `.env`
+- `CANNAAI_API_TOKEN`
+- OpenAI/API provider keys
+- private CannaAI hostnames or tunnel URLs if they reveal private infrastructure
+- camera bearer tokens
+- permanent camera URLs containing credentials
+- signed snapshot URLs
+- real grow exports or sensor/database dumps
 
-### `render_plant_dashboard`
-Read-only render tool. Opens the inline ChatGPT dashboard.
+The status and capability tools are intentionally designed not to echo the configured backend URL or token.
 
-## Why the widget is plain HTML for v0.1
+## Write and automation safety
 
-The MCP server is the important integration boundary. The first widget intentionally has no React/Vite build step, which makes local ChatGPT testing much simpler and closely follows the official OpenAI quickstart. It can be swapped for React later without changing the MCP tool contracts.
+These variables are present now for the later guarded-automation stage but remain off by default:
 
-## Security before deploying beyond local development
+```env
+CANNAAI_ENABLE_WRITE_TOOLS=false
+CANNAAI_ENABLE_AUTOMATION=false
+```
 
-Before a public or multi-user deployment:
+Stage 1 exposes **no physical grow-control or destructive MCP tools**. Future write parity uses the approved preview/confirm action-ticket design rather than unrestricted commands.
 
-1. add authentication and user-to-grow authorization
-2. replace permissive CORS with an intentional policy
-3. use exact CSP domains instead of the development wildcard
-4. never place camera tokens or API keys in tool output or widget HTML
-5. make camera image URLs signed and short-lived
-6. rate-limit snapshot and analysis tools
-7. store grow data server-side rather than JSON fixtures
+## Feature-parity roadmap
 
-## Next integration point
+The approved design is in:
 
-For a real deployment, wire `src/store.js` to your CannaAI backend and configure `CAMERA_SNAPSHOT_URL_TEMPLATE`. The rest of the app is already separated so those two changes are enough to turn the starter into a real plant monitor.
+```text
+docs/superpowers/specs/2026-08-13-cannaai-chatgpt-feature-parity-design.md
+```
+
+Stage 1 implementation plan:
+
+```text
+docs/superpowers/plans/2026-08-13-stage1-real-backend-foundation.md
+```
+
+Planned next stages:
+
+1. read-only cultivation parity: rooms, environment history, alerts, analysis history, CannaAI-backed photo analysis, trichomes, canopy, analytics
+2. business/advisor parity: advisors, AI insights, inventory, harvests, yield/business metrics
+3. richer ChatGPT widgets: grow overview, trends, alerts, analysis/trichome result views
+4. guarded automation: status reads plus signed preview/execute action tickets
+
+## Security before public/multi-user deployment
+
+Before exposing the app beyond a trusted development setup:
+
+1. authenticate the public MCP endpoint
+2. authorize each user to the correct grow/backend
+3. use HTTPS
+4. replace development wildcard CORS with an explicit allowlist
+5. use exact widget CSP domains
+6. rate-limit expensive snapshot and analysis calls
+7. use signed short-lived camera URLs
+8. audit consequential actions when write parity is enabled later
+
+See `SECURITY.md` for the repository security policy.
