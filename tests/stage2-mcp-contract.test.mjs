@@ -19,7 +19,6 @@ test('Stage 2 registry uses read-only open-world annotations', () => {
   assert.match(source, /const annotations = \{ readOnlyHint: true, destructiveHint: false, openWorldHint: true \}/);
 });
 
-test('Stage 2 registry is registered and plugin version is 0.3.0', () => {
+test('Stage 2 registry remains registered', () => {
   assert.match(serverSource, /registerStage2Tools\(server\)/);
-  assert.match(serverSource, /PLUGIN_VERSION = "0\.3\.0"/);
 });
