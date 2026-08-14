@@ -273,6 +273,26 @@ export function createStore({ config = getConfig(), client = null, env = process
     return normalizeInventory(await apiClient.getInventory());
   }
 
+  async function getGrowOverview({ insightHours = 24 } = {}) {
+    const parsedHours = Number.parseInt(String(insightHours), 10);
+    const safeHours = Math.min(168, Math.max(1, Number.isFinite(parsedHours) ? parsedHours : 24));
+    const [roomsResult, plantsResult, alertsResult, insightsResult, inventoryResult] = await Promise.allSettled([
+      listRooms(),
+      listPlants(),
+      summarizeActiveAlerts(),
+      getAiInsights({ hours: safeHours }),
+      getInventorySummary(),
+    ]);
+
+    return {
+      rooms: roomsResult.status === 'fulfilled' ? roomsResult.value : null,
+      plants: plantsResult.status === 'fulfilled' ? plantsResult.value : null,
+      alertSummary: alertsResult.status === 'fulfilled' ? alertsResult.value : null,
+      aiInsights: insightsResult.status === 'fulfilled' ? insightsResult.value : null,
+      inventory: inventoryResult.status === 'fulfilled' ? inventoryResult.value : null,
+    };
+  }
+
   async function listInventoryItems({ category = null, lowStockOnly = false } = {}) {
     const inventory = await getInventorySummary();
     let items = inventory.items;
@@ -385,7 +405,7 @@ export function createStore({ config = getConfig(), client = null, env = process
     listAlerts, getAlert, summarizeActiveAlerts,
     getPlantAnalyses, getAnalysis, getAnalysisHistory, getPlantHealthAnalytics, comparePlants,
     getCanopyStatus, getTrichomeCapabilities,
-    getAdvisorStatus, askCannaAiAdvisor, getAiInsights, getInventorySummary, listInventoryItems,
+    getAdvisorStatus, askCannaAiAdvisor, getAiInsights, getInventorySummary, listInventoryItems, getGrowOverview,
     getBackendStatus, getCapabilities,
   };
 }
@@ -418,5 +438,6 @@ export async function askCannaAiAdvisor(options) { return defaultStore().askCann
 export async function getAiInsights(options) { return defaultStore().getAiInsights(options); }
 export async function getInventorySummary() { return defaultStore().getInventorySummary(); }
 export async function listInventoryItems(options) { return defaultStore().listInventoryItems(options); }
+export async function getGrowOverview(options) { return defaultStore().getGrowOverview(options); }
 export async function getBackendStatus() { return defaultStore().getBackendStatus(); }
 export async function getCapabilities() { return defaultStore().getCapabilities(); }
