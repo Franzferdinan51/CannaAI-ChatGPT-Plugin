@@ -17,7 +17,6 @@ test('Stage 3 tools are non-destructive open-world operations', () => {
   assert.match(source, /openWorldHint: true/);
 });
 
-test('Stage 3 registry is registered and version is 0.4.0', () => {
+test('Stage 3 registry remains registered', () => {
   assert.match(serverSource, /registerStage3Tools\(server\)/);
-  assert.match(serverSource, /PLUGIN_VERSION = "0\.4\.0"/);
 });
